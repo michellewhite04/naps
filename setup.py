@@ -33,11 +33,13 @@ setup(
     long_description_content_type="text/x-rst",
     long_description=readme,
     packages=["naps", "naps.utils"],
+    package_data={'naps': ['data/classifier.pkl']},
     install_requires=requirements,
     scripts=tool_scripts,
     entry_points={
         "console_scripts": [
             "naps-track=naps.naps_track:main",
+            "color-track=naps.color_track:main",
             "naps-plot=naps.naps_plot:main",
             "naps-interactions=naps.naps_interactions:main",
         ],

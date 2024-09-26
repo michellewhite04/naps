@@ -1,12 +1,8 @@
 #!/usr/bin/env python
-# coding: utf-8
-
-# In[22]:
-
-
-#!/usr/bin/env python
-import numpy as np
 import pickle
+import pkg_resources
+
+import numpy as np
 
 class ColorTagModel:
 
@@ -18,8 +14,11 @@ class ColorTagModel:
 
         if np.isnan(img_mean):
             raise Exception('Tag crop average value is NaN.')
-
-        with open('classifier.pkl', 'rb') as file:
+        
+        # Assign the classifier filename from package data
+        clf_path = pkg_resources.resource_filename('naps', 'data/classifier.pkl')
+   
+        with open(clf_path, 'rb') as file:
             clf = pickle.load(file)
 
         img = img.flatten()

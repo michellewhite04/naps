@@ -19,7 +19,7 @@ import cv2
 import numpy as np
 from skimage.draw import disk
 
-from cost_matrix import CostMatrix
+from naps.cost_matrix import CostMatrix
 
 class Matching:
     """Matching pipeline.
@@ -47,7 +47,7 @@ class Matching:
         half_rolling_window_size: int,
         crop_type: str,
         tag_node_dict: dict,
-        min_sleap_score: float = 0.1,
+        min_sleap_score: float,
         **kwargs,
     ):
         
@@ -94,7 +94,7 @@ class Matching:
 
             # Crop and return the ArUco tags or color tags
             frame.cropMarkerWithCoordsArray(
-                self.tag_node_dict[current_frame], self.tag_crop_size, self.crop_type
+                self.tag_node_dict[current_frame], self.tag_crop_size, self.crop_type, self.min_sleap_score
             )
             job_match_dict[current_frame] = frame.returnMarkerTags(self.marker_detector)
 
@@ -162,12 +162,14 @@ class MatchFrame:
 
         return cls(*args, **kwargs)
 
-    def cropMarkerWithCoordsArray(self, coords_dict, crop_size: int, crop_type: str):
+    def cropMarkerWithCoordsArray(self, coords_dict, crop_size: int, crop_type: str, min_sleap_score: float):
         """Creates cropped images for each marker in the coords_dict.
 
         Args:
             coords_dict (dict): Dictionary of marker coordinates to crop for each track.
             crop_size (float): Crop size.
+            crop_type (str): Type of crop to perform on tag node, i.e., circle or square.
+            min_sleap_score (float): Minimum sleap score required for matching.
 
         """
 
@@ -189,7 +191,12 @@ class MatchFrame:
         
         if crop_type == 'square':
             # Loop the frame track coordinates
-            for track, coords in coords_dict.items():
+            for track, (coords, score) in coords_dict.items():
+
+                # Skip track if the score is below the threshold
+                if score < min_sleap_score:
+                    self.frame_images[track] = None
+                    continue
 
                 # Skip track if NaN found in coordinates
                 if np.isnan(coords).any():
@@ -205,8 +212,14 @@ class MatchFrame:
                 
                 
         elif crop_type == 'circle':
-            for track, coords in coords_dict.items():
-                
+            for track, (coords, score) in coords_dict.items():
+
+                # Skip track if the score is below the threshold
+                if score < min_sleap_score:
+                    print(track)
+                    self.frame_images[track] = None
+                    continue
+
                 if np.isnan(coords).any():
                     self.frame_images[track] = None
                     continue

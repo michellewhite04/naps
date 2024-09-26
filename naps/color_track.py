@@ -1,10 +1,4 @@
 #!/usr/bin/env python
-# coding: utf-8
-
-# In[ ]:
-
-
-#!/usr/bin/env python
 import argparse
 import logging
 import time
@@ -12,8 +6,8 @@ from collections import defaultdict
 
 import sleap
 
-from color_tag import ColorTagModel # this should be from naps.color_tag import ColorTagModel
-from matching import Matching # this should be from naps.matching import Matching
+from naps.color_tag import ColorTagModel # this should be from naps.color_tag import ColorTagModel
+from naps.matching import Matching # this should be from naps.matching import Matching
 from naps.sleap_utils import update_labeled_frames
 
 logger = logging.getLogger("NAPS Logger")
@@ -47,6 +41,13 @@ def build_parser():
         help="The filepath of the video used with SLEAP",
         type=str,
         required=True,
+    )
+
+    parser.add_argument(
+        "--min-sleap-score",
+        help="The minimum SLEAP score required for matching",
+        type=float,
+        default=0.30,
     )
 
     parser.add_argument(
@@ -126,8 +127,7 @@ def main(argv=None):
         for instance in lf.instances:
             tag_idx = instance.skeleton.node_names.index(args.tag_node_name)
             track_name = int(instance.track.name.split("_")[-1])
-            # print(f'Frame {lf.frame_idx} track {track_name} has points {instance.numpy()[tag_idx]}')
-            tag_locations_dict[lf.frame_idx][track_name] = instance.numpy()[tag_idx]
+            tag_locations_dict[lf.frame_idx][track_name] = (instance.numpy()[tag_idx],instance.score)
 
     # Create an color tag model with the default parameters
     logger.info("Create color tag model...")
@@ -147,6 +147,7 @@ def main(argv=None):
         tag_crop_size = args.tag_crop_size,
         crop_type = args.tag_crop_type,
         tag_node_dict = tag_locations_dict,
+        min_sleap_score = args.min_sleap_score,
     )
     matching_dict = matching.match()
     logger.info("Done matching in %s seconds.", time.time() - t0)
