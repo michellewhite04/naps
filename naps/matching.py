@@ -1,13 +1,25 @@
 #!/usr/bin/env python
+# coding: utf-8
+
+# In[1]:
+
+
+#!/usr/bin/env python
+# coding: utf-8
+
+# In[ ]:
+
+
+#!/usr/bin/env python
 import os
 from collections import defaultdict
 from typing import Callable
 
 import cv2
 import numpy as np
+from skimage.draw import disk
 
-from naps.cost_matrix import CostMatrix
-
+from cost_matrix import CostMatrix
 
 class Matching:
     """Matching pipeline.
@@ -17,8 +29,9 @@ class Matching:
         video_first_frame (str): Frame to start matching.
         video_last_frame (str): Frame to end matching.
         marker_detector (Callable): Function used to detect/assign markers.
-        aruco_crop_size (int): Crop size used for marker detection.
+        tag_crop_size (int): Crop size used for marker detection.
         half_rolling_window_size (int): Window size (upstream/downstream) used by the cost matrix.
+        crop_type (str): Type of crop to perform on tag node, i.e., circle or square.
         tag_node_dict (dict): Dictionary of frames, tracks, and node coordinates.
         threads (int): The number of CPU threads to use.
         min_sleap_score (float): Minimum sleap score required for matching. Should this be removed?
@@ -30,13 +43,14 @@ class Matching:
         video_first_frame: int,
         video_last_frame: int,
         marker_detector: Callable,
-        aruco_crop_size: int,
+        tag_crop_size: int,
         half_rolling_window_size: int,
+        crop_type: str,
         tag_node_dict: dict,
         min_sleap_score: float = 0.1,
         **kwargs,
     ):
-
+        
         # Confirm the video file exists
         if not os.path.isfile(video_filename):
             raise Exception(f"{video_filename} does not exist")
@@ -52,8 +66,9 @@ class Matching:
 
         # Matching arguments
         self.half_rolling_window_size = half_rolling_window_size
-        self.aruco_crop_size = aruco_crop_size
+        self.tag_crop_size = tag_crop_size
         self.marker_detector = marker_detector
+        self.crop_type = crop_type
 
     def match(self) -> defaultdict(lambda: defaultdict(str)):
         """Performs matching.
@@ -77,9 +92,9 @@ class Matching:
         frame = MatchFrame.fromCV2(*video.read())
         while frame and current_frame <= self.video_last_frame:
 
-            # Crop and return the ArUco tags
+            # Crop and return the ArUco tags or color tags
             frame.cropMarkerWithCoordsArray(
-                self.tag_node_dict[current_frame], self.aruco_crop_size
+                self.tag_node_dict[current_frame], self.tag_crop_size, self.crop_type
             )
             job_match_dict[current_frame] = frame.returnMarkerTags(self.marker_detector)
 
@@ -87,16 +102,26 @@ class Matching:
             frame = MatchFrame.fromCV2(*video.read())
             current_frame += 1
 
+        
         # Create the cost matrix and assign the track/tag pairs for each frame
         job_cost_matrix = CostMatrix.fromDict(
             job_match_dict,
             self.video_first_frame,
             self.video_last_frame,
-            self.half_rolling_window_size,
-        )
+            self.half_rolling_window_size, 
+            )
+            
+        #job_match_dict_keys = list(job_match_dict.keys())
+        #print(job_match_dict[job_match_dict_keys[91]][2]) 
+
+        if self.crop_type != 'square' and self.crop_type != 'circle':
+            # raise an error
+            raise Exception(f"unknown type: {self.crop_type}")
+
         return job_cost_matrix.assignTrackTagPairs()
-
-
+        
+            
+            
 class MatchFrame:
     """Class used to assign markers for a frame and associated data.
 
@@ -137,7 +162,7 @@ class MatchFrame:
 
         return cls(*args, **kwargs)
 
-    def cropMarkerWithCoordsArray(self, coords_dict, crop_size: int):
+    def cropMarkerWithCoordsArray(self, coords_dict, crop_size: int, crop_type: str):
         """Creates cropped images for each marker in the coords_dict.
 
         Args:
@@ -161,22 +186,62 @@ class MatchFrame:
             return np.maximum(int(coord) - crop_size, 0), np.minimum(
                 int(coord) + crop_size, coord_max - 1
             )
+        
+        if crop_type == 'square':
+            # Loop the frame track coordinates
+            for track, coords in coords_dict.items():
 
-        # Loop the frame track coordinates
-        for track, coords in coords_dict.items():
+                # Skip track if NaN found in coordinates
+                if np.isnan(coords).any():
+                    self.frame_images[track] = None
+                    continue
 
-            # Skip track if NaN found in coordinates
-            if np.isnan(coords).any():
-                self.frame_images[track] = None
-                continue
+                # Assign the min/max coords for cropping
+                y_min, y_max = croppedCoords(coords[1], crop_size, self.frame.shape[0])
+                x_min, x_max = croppedCoords(coords[0], crop_size, self.frame.shape[1])
 
-            # Assign the min/max coords for cropping
-            y_min, y_max = croppedCoords(coords[1], crop_size, self.frame.shape[0])
-            x_min, x_max = croppedCoords(coords[0], crop_size, self.frame.shape[1])
+               # Assign and store the cropped track image
+                self.frame_images[track] = self.frame[y_min:y_max, x_min:x_max, 0]
+                
+                
+        elif crop_type == 'circle':
+            for track, coords in coords_dict.items():
+                
+                if np.isnan(coords).any():
+                    self.frame_images[track] = None
+                    continue
+                
+                #gray_img = cv2.cvtColor(self.frame, cv2.COLOR_BGR2GRAY)
+                mask = np.ones(self.frame.shape[:2], dtype = np.uint8) * 255
+                
+                cx = coords[0]
+                cy = coords[1]
 
-            # Assign and store the cropped track image
-            self.frame_images[track] = self.frame[y_min:y_max, x_min:x_max, 0]
+                # Feed in the coords for the center of the circle
+                # Creates the y_axis and x_axis of where the circle exists
+                y_axis, x_axis = disk((cx,cy), crop_size, shape = self.frame.shape[:2])
+                
+                # Set the circle axes in mask equal to the corresponding color values in the frame
+                mask[x_axis, y_axis] = self.frame[x_axis, y_axis, 0]
+                
+                # Overlay frame & mask to check on crop
+                #img_frame = plt.imshow(self.frame)
+                #img_mask = plt.imshow(mask, alpha = 0.5)
 
+                #plt.show()
+                
+                # Assign the min/max coords for cropping a smaller frame circumscribed about the circle
+                y_min, y_max = croppedCoords(coords[1], crop_size, self.frame.shape[0])
+                x_min, x_max = croppedCoords(coords[0], crop_size, self.frame.shape[1])
+                
+                # Store the fully cropped image for the corresponding track
+                self.frame_images[track] = mask[y_min:y_max, x_min:x_max]
+                
+        else:
+            # raise an error
+            raise Exception(f"unknown type: {crop_type}")
+                
+                
     def returnMarkerTags(self, marker_detect: Callable):
         """Detect marker tags using the specified marker_detect function
 
@@ -192,13 +257,14 @@ class MatchFrame:
 
         # Loop the frame track images
         for track, track_image in self.frame_images.items():
-
+            
             # Store None if no image was found
             if track_image is None:
                 track_tag_dict[track].append(None)
                 continue
-
+            
             # Assign the marker using the detector function
             track_tag_dict[track].extend(marker_detect(track_image))
 
         return track_tag_dict
+
