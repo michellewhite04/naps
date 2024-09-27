@@ -88,10 +88,10 @@ class CostMatrix:
                     match_cost_dataframe.columns[track_index]
                 ] = match_cost_dataframe.index[tag_index]
             
-            print(match_frame, matched_dict[match_frame])
+            #print(match_frame, matched_dict[match_frame])
 
-            if match_frame < 546 and match_frame > 542:
-                print(match_cost_dataframe)
+            #if match_frame < 546 and match_frame > 542:
+            #    print(match_cost_dataframe)
 
         for frame in range(self.first_frame + 1, self.last_frame + 1):
             for track, tag in matched_dict[frame - 1].items():
