@@ -68,7 +68,7 @@ class CostMatrix:
                     for tag in tag_list:
                         if tag != -1:
                             cost_dict[track][tag] += 1
-                            if cost_dict[track][tag] == 0:
+                            if cost_dict[track][tag] >= 0:
                                 del cost_dict[track][tag]
 
             # Create a dataframe of the matrix
@@ -81,18 +81,17 @@ class CostMatrix:
             set_list = list(set(cost_df_col_list).intersection(set(match_tag_list)))
 
             match_cost_dataframe = cost_dataframe[set_list]
-
-            if 1878 <= match_frame <= 1892:
-                print(match_cost_dataframe)
-
+   
             # Store the assignments
             for track_index, tag_index in self.assignment_method(match_cost_dataframe.values):
                 matched_dict[match_frame][
                     match_cost_dataframe.columns[track_index]
                 ] = match_cost_dataframe.index[tag_index]
+            
+            print(match_frame, matched_dict[match_frame])
 
-            #if 1882 <= frame <= 1892:
-            #    print(matched_dict[frame])
+            if match_frame < 546 and match_frame > 542:
+                print(match_cost_dataframe)
 
         for frame in range(self.first_frame + 1, self.last_frame + 1):
             for track, tag in matched_dict[frame - 1].items():
@@ -101,16 +100,7 @@ class CostMatrix:
                     and tag not in matched_dict[frame].values()
                 ):
                     matched_dict[frame][track] = matched_dict[frame - 1][track]
-
-            #if 1882 <= frame <= 1892:
-            #    print(matched_dict[frame])
-
-        #tag_list = []
-        #for frame in range(self.first_frame, self.last_frame + 1):
-        #    for track in self.unmatched_dict[frame].keys():
-        #        tag_list.append(self.unmatched_dict[frame][track][0])
-        #unique_tag_list = set(tag_list)   
-        
+ 
         #unique_tag_list = set([self.unmatched_dict[frame][track][0] for track in self.unmatched_dict[frame].keys() for frame in range(self.first_frame, self.last_frame + 1)])
         unique_tag_list = set(all_tags_list)
         for frame in range(self.first_frame, self.last_frame + 1):
