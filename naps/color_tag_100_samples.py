@@ -1,6 +1,8 @@
 #!/usr/bin/env python
-import numpy as np
 import pickle
+import pkg_resources
+
+import numpy as np
 
 from collections import Counter
 
@@ -8,7 +10,9 @@ class ColorTagModel:
 
     def __init__(self):
 
-        with open('classifier.pkl', 'rb') as file:
+        clf_path = pkg_resources.resource_filename('naps', 'data/classifier.pkl')
+
+        with open(clf_path, 'rb') as file:
             clf = pickle.load(file)
 
         self.classifier = clf
