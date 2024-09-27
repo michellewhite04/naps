@@ -1,24 +1,13 @@
 #!/usr/bin/env python
-# coding: utf-8
-
-# In[1]:
-
-
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[ ]:
-
-
-#!/usr/bin/env python
 import os
+import cv2
+import logging
+
+import numpy as np
+
 from collections import defaultdict
 from typing import Callable
-
-import cv2
-import numpy as np
 from skimage.draw import disk
-
 from naps.cost_matrix import CostMatrix
 
 class Matching:
@@ -69,6 +58,8 @@ class Matching:
         self.tag_crop_size = tag_crop_size
         self.marker_detector = marker_detector
         self.crop_type = crop_type
+        self.total_score_filtered_frames = 0
+        self.total_score_filtered_tracks = 0
 
     def match(self) -> defaultdict(lambda: defaultdict(str)):
         """Performs matching.
@@ -77,12 +68,17 @@ class Matching:
             defaultdict(lambda: defaultdict(str)): Dictionary of matching results with the form dictionary[frame][track] = tag.
         """
 
+        # Confirm the crop type is valid
+        if self.crop_type != 'square' and self.crop_type != 'circle':
+            raise Exception(f"unknown type: {self.crop_type}")
+
         # Create a dict to store the matches for this job
         job_match_dict = {}
 
         # Set the current frame of the job
         current_frame = self.video_first_frame
-        print(f"Processing frames {self.video_first_frame} to {self.video_last_frame}")
+
+        logging.info(f"Processing frames {self.video_first_frame} to {self.video_last_frame}")
 
         # Initialize OpenCV, then set the starting frame (0-based)
         video = cv2.VideoCapture(self.video_filename)
@@ -98,11 +94,17 @@ class Matching:
             )
             job_match_dict[current_frame] = frame.returnMarkerTags(self.marker_detector)
 
+            # Update the total number of score filtered frames
+            if frame.score_filtered_tracks > 0:
+                self.total_score_filtered_frames += 1
+
+            # Update the total number of score filtered tracks
+            self.total_score_filtered_tracks += frame.score_filtered_tracks
+
             # Advance to the next frame
             frame = MatchFrame.fromCV2(*video.read())
             current_frame += 1
 
-        
         # Create the cost matrix and assign the track/tag pairs for each frame
         job_cost_matrix = CostMatrix.fromDict(
             job_match_dict,
@@ -110,13 +112,9 @@ class Matching:
             self.video_last_frame,
             self.half_rolling_window_size, 
             )
-            
-        #job_match_dict_keys = list(job_match_dict.keys())
-        #print(job_match_dict[job_match_dict_keys[91]][2]) 
-
-        if self.crop_type != 'square' and self.crop_type != 'circle':
-            # raise an error
-            raise Exception(f"unknown type: {self.crop_type}")
+        
+        logging.info(f"Total frames with score filtered tracks: {self.total_score_filtered_frames}")
+        logging.info(f"Total score filtered tracks: {self.total_score_filtered_tracks}")
 
         return job_cost_matrix.assignTrackTagPairs()
         
@@ -138,6 +136,7 @@ class MatchFrame:
         self.frame = frame
         self.frame_exists = frame_exists
         self.frame_images = {}
+        self.score_filtered_tracks = 0
 
     def __nonzero__(self):
         """Replaces nonzero for the class
@@ -196,6 +195,7 @@ class MatchFrame:
                 # Skip track if the score is below the threshold
                 if score < min_sleap_score:
                     self.frame_images[track] = None
+                    self.score_filtered_tracks += 1
                     continue
 
                 # Skip track if NaN found in coordinates
@@ -216,8 +216,8 @@ class MatchFrame:
 
                 # Skip track if the score is below the threshold
                 if score < min_sleap_score:
-                    print(track)
                     self.frame_images[track] = None
+                    self.score_filtered_tracks += 1
                     continue
 
                 if np.isnan(coords).any():
